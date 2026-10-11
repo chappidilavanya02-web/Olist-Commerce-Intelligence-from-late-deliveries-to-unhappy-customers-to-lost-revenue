@@ -1,5 +1,5 @@
 --preview 
---count can't show formatting problem like ODD CAsing, extraspace or Unrelated values
+--count can't show formatting problem like ODD Casing, extraspace or Unrelated values
 
 SELECT  TOP 10 * 
 FROM customers;
