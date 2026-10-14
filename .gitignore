@@ -1,0 +1,17 @@
+# Raw data files (download from Kaggle instead)
+data/
+*.csv
+
+# SQL Server database files and backups
+*.mdf
+*.ldf
+*.bak
+
+# Python and notebook clutter (for later stages)
+__pycache__/
+.ipynb_checkpoints/
+*.pyc
+
+# System files
+.DS_Store
+Thumbs.db
