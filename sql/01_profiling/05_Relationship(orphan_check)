@@ -1,0 +1,198 @@
+/* 
+step 5 : Relationships (orpan Check) 
+purpose: check every parent-child relationship in both directions
+         Joins silently drop those rows without relation
+Results are summarised in docs/data_dictionary.md
+*/
+use OlistDB;
+GO
+
+--1.orderitems -> orders
+-- Child rows with no parent
+SELECT COUNT(*) AS items_without_order
+FROM orderitems oi
+LEFT JOIN orders o 
+ON o.order_id = oi.order_id
+WHERE o.order_id IS NULL;
+-- Result: 0 (every item has an order)
+
+-- Parent rows with no children
+SELECT COUNT(*) AS orders_without_items
+FROM orders o
+LEFT JOIN orderitems oi 
+ON oi.order_id = o.order_id
+WHERE oi.order_id IS NULL;
+
+-- Result: 775 (unavailable 603, canceled 164, created 5, invoiced 2, shipped 1)
+
+
+
+-- 2. orders -> customers
+-- Child rows with no parent
+SELECT COUNT(*) AS orders_without_customer
+FROM orders o
+LEFT JOIN customers c ON c.customer_id = o.customer_id
+WHERE c.customer_id IS NULL;
+
+-- Parent rows with no children
+SELECT COUNT(*) AS customers_without_orders
+FROM customers c
+LEFT JOIN orders o ON o.customer_id = c.customer_id
+WHERE o.customer_id IS NULL;
+
+
+-- Result: 0
+
+
+-- 3. orderpayments -> orders
+-- Child rows with no parent
+SELECT COUNT(*) AS payment_without_order
+FROM orderpayments OPay
+LEFT JOIN orders o ON OPay.order_id = o.order_id
+WHERE o.order_id IS NULL;
+
+-- Parent rows with no children
+SELECT COUNT(*) AS order_without_Payment
+FROM orders o
+LEFT JOIN orderpayments OPay ON o.order_id = OPay.order_id 
+WHERE OPay.order_id IS NULL;
+
+-- Result: 1 (one delivered order from 2016 has no payment record)
+
+
+-- 4. orderitems -> products
+-- Child rows with no parent
+SELECT COUNT(*) AS items_without_product
+FROM orderitems oi
+LEFT JOIN products p ON p.product_id = oi.product_id
+WHERE p.product_id IS NULL;
+ 
+-- Parent rows with no children
+SELECT COUNT(*) AS products_without_items
+FROM products p
+LEFT JOIN orderitems oi ON oi.product_id = p.product_id
+WHERE oi.product_id IS NULL;
+ 
+ 
+-- Result: 0
+
+
+ 
+-- 5. orderitems -> sellers
+-- Child rows with no parent
+SELECT COUNT(*) AS items_without_seller
+FROM orderitems oi
+LEFT JOIN sellers s ON s.seller_id = oi.seller_id
+WHERE s.seller_id IS NULL;
+ 
+-- Parent rows with no children
+SELECT COUNT(*) AS sellers_without_items
+FROM sellers s
+LEFT JOIN orderitems oi ON oi.seller_id = s.seller_id
+WHERE oi.seller_id IS NULL;
+ --Result - 0
+ 
+-- 6. order_reviews -> orders
+-- Child rows with no parent
+SELECT COUNT(*) AS reviews_without_order
+FROM order_reviews r
+LEFT JOIN orders o ON o.order_id = r.order_id
+WHERE o.order_id IS NULL;
+ 
+-- Parent rows with no children
+SELECT COUNT(*) AS orders_without_review
+FROM orders o
+LEFT JOIN order_reviews r ON r.order_id = o.order_id
+WHERE r.order_id IS NULL;
+
+-- Result: 768 (not every customer leaves a review)
+ 
+
+-- 7. products.product_category_name -> category translation table
+-- Products whose category is not in the translation table (NULL categories excluded)
+SELECT COUNT(*) AS products_category_not_in_translation
+FROM products p
+LEFT JOIN product_category_name_translation t
+       ON t.product_category_name = p.product_category_name
+WHERE p.product_category_name IS NOT NULL
+  AND t.product_category_name IS NULL;
+ 
+-- Products with a NULL category (a missing value, not a broken link)
+SELECT COUNT(*) AS products_with_null_category
+FROM products
+WHERE product_category_name IS NULL;
+ 
+-- Translation categories not used by any product
+SELECT COUNT(*) AS translation_categories_unused
+FROM product_category_name_translation t
+LEFT JOIN products p ON p.product_category_name = t.product_category_name
+WHERE p.product_category_name IS NULL;
+
+---- Result: 13 products, from 2 categories: pc_gamer and portateis_cozinha_e_preparadores_de_alimentos
+-- Result: 610 
+
+
+ 
+-- 8. zip prefix -> geolocation (many rows per prefix)
+-- The subquery gives one row per prefix, so the join cannot multiply rows.
+-- Customers whose zip prefix is not in geolocation
+SELECT COUNT(*) AS customers_without_geolocation
+FROM customers c
+LEFT JOIN (SELECT DISTINCT geolocation_zip_code_prefix FROM geolocation) g
+       ON g.geolocation_zip_code_prefix = c.customer_zip_code_prefix
+WHERE g.geolocation_zip_code_prefix IS NULL;
+ 
+-- Sellers whose zip prefix is not in geolocation
+SELECT COUNT(*) AS sellers_without_geolocation
+FROM sellers s
+LEFT JOIN (SELECT DISTINCT geolocation_zip_code_prefix FROM geolocation) g
+       ON g.geolocation_zip_code_prefix = s.seller_zip_code_prefix
+WHERE g.geolocation_zip_code_prefix IS NULL;
+
+ --Result: 278 customers
+-- Result: 7 sellers
+
+
+
+--PART 2
+--verifying the cause of result 
+-- 775 orders without items: what status do they have?
+SELECT o.order_status, COUNT(*) AS n
+FROM orders o
+LEFT JOIN orderitems oi ON oi.order_id = o.order_id
+WHERE oi.order_id IS NULL
+GROUP BY o.order_status
+ORDER BY n DESC;
+
+--the 1 order without a payment
+SELECT o.*
+FROM orders o
+LEFT JOIN orderpayments op ON op.order_id = o.order_id
+WHERE op.order_id IS NULL;
+
+-- the 13 categories missing from the translation table
+SELECT DISTINCT p.product_category_name
+FROM products p
+LEFT JOIN product_category_name_translation t
+       ON t.product_category_name = p.product_category_name
+WHERE p.product_category_name IS NOT NULL
+  AND t.product_category_name IS NULL;
+
+-- the 1 unused translation row
+SELECT t.*
+FROM product_category_name_translation t
+LEFT JOIN products p ON p.product_category_name = t.product_category_name
+WHERE p.product_category_name IS NULL;
+
+--checking weather header_rows included in data 
+SELECT 'orders' AS table_name, COUNT(*) AS header_rows FROM orders WHERE order_id = 'order_id'
+UNION ALL SELECT 'customers', COUNT(*) FROM customers WHERE customer_id = 'customer_id'
+UNION ALL SELECT 'orderitems', COUNT(*) FROM orderitems WHERE order_id = 'order_id'
+UNION ALL SELECT 'orderpayments', COUNT(*) FROM orderpayments WHERE order_id = 'order_id'
+UNION ALL SELECT 'order_reviews', COUNT(*) FROM order_reviews WHERE review_id = 'review_id'
+UNION ALL SELECT 'products', COUNT(*) FROM products WHERE product_id = 'product_id'
+UNION ALL SELECT 'sellers', COUNT(*) FROM sellers WHERE seller_id = 'seller_id'
+UNION ALL SELECT 'translation', COUNT(*) FROM product_category_name_translation
+          WHERE product_category_name = 'product_category_name';
+
+-- Result: header_rows = 0 in every table
